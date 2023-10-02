@@ -32,6 +32,9 @@ function colorize(child) {
   // x/y ratio to aim for -- wider rectangles are better for text display
   var kAspectRatio = 1.2;
 
+  // height of the caption
+  var kCaption = 14;
+
   var focused = null;
 
   function focus(tree) {
@@ -102,6 +105,16 @@ function colorize(child) {
     width -= kBorderWidth * 2;
     height -= kBorderWidth * 2;
 
+    if (x > kPadding) {
+      x--;
+      width++;
+    }
+
+    if (y > kPadding + kCaption) {
+      y--;
+      height++;
+    }
+
     dom.style.left = x + 'px';
     dom.style.top = y + 'px';
     dom.style.width = Math.max(width, 0) + 'px';
@@ -156,7 +169,7 @@ function colorize(child) {
     var x1 = 0, y1 = 0, x2 = width - 1, y2 = height - 2;
     x1 += kPadding; y1 += kPadding;
     x2 -= kPadding; y2 -= kPadding;
-    y1 += 14;  // XXX get first child height for caption spacing
+    y1 += kCaption;  // XXX get first child height for caption spacing
 
     var pixels_to_units = Math.sqrt(total / ((x2 - x1) * (y2 - y1)));
 
