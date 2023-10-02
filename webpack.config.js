@@ -3,7 +3,8 @@ const path = require("path");
 module.exports = {
   entry: {
     'panel/devtools-panel': "./src/devtools-panel.js",
-    'devtools': "./src/devtools.js"
+    'devtools': "./src/devtools.js",
+    '../background_scripts/background': './src/background.js',
   },
   output: {
     path: path.resolve(__dirname, "addon"),

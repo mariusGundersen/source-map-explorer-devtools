@@ -3,246 +3,6 @@
 /* 0 */,
 /* 1 */,
 /* 2 */
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-
-Object.defineProperty(exports, "commentRegex", ({
-  get: function getCommentRegex () {
-    // Groups: 1: media type, 2: MIME type, 3: charset, 4: encoding, 5: data.
-    return /^\s*?\/[\/\*][@#]\s+?sourceMappingURL=data:(((?:application|text)\/json)(?:;charset=([^;,]+?)?)?)?(?:;(base64))?,(.*?)$/mg;
-  }
-}));
-
-
-Object.defineProperty(exports, "mapFileCommentRegex", ({
-  get: function getMapFileCommentRegex () {
-    // Matches sourceMappingURL in either // or /* comment styles.
-    return /(?:\/\/[@#][ \t]+?sourceMappingURL=([^\s'"`]+?)[ \t]*?$)|(?:\/\*[@#][ \t]+sourceMappingURL=([^*]+?)[ \t]*?(?:\*\/){1}[ \t]*?$)/mg;
-  }
-}));
-
-var decodeBase64;
-if (typeof Buffer !== 'undefined') {
-  if (typeof Buffer.from === 'function') {
-    decodeBase64 = decodeBase64WithBufferFrom;
-  } else {
-    decodeBase64 = decodeBase64WithNewBuffer;
-  }
-} else {
-  decodeBase64 = decodeBase64WithAtob;
-}
-
-function decodeBase64WithBufferFrom(base64) {
-  return Buffer.from(base64, 'base64').toString();
-}
-
-function decodeBase64WithNewBuffer(base64) {
-  if (typeof value === 'number') {
-    throw new TypeError('The value to decode must not be of type number.');
-  }
-  return new Buffer(base64, 'base64').toString();
-}
-
-function decodeBase64WithAtob(base64) {
-  return decodeURIComponent(escape(atob(base64)));
-}
-
-function stripComment(sm) {
-  return sm.split(',').pop();
-}
-
-function readFromFileMap(sm, read) {
-  var r = exports.mapFileCommentRegex.exec(sm);
-  // for some odd reason //# .. captures in 1 and /* .. */ in 2
-  var filename = r[1] || r[2];
-
-  try {
-    var sm = read(filename);
-    if (sm != null && typeof sm.catch === 'function') {
-      return sm.catch(throwError);
-    } else {
-      return sm;
-    }
-  } catch (e) {
-    throwError(e);
-  }
-
-  function throwError(e) {
-    throw new Error('An error occurred while trying to read the map file at ' + filename + '\n' + e.stack);
-  }
-}
-
-function Converter (sm, opts) {
-  opts = opts || {};
-
-  if (opts.hasComment) {
-    sm = stripComment(sm);
-  }
-
-  if (opts.encoding === 'base64') {
-    sm = decodeBase64(sm);
-  } else if (opts.encoding === 'uri') {
-    sm = decodeURIComponent(sm);
-  }
-
-  if (opts.isJSON || opts.encoding) {
-    sm = JSON.parse(sm);
-  }
-
-  this.sourcemap = sm;
-}
-
-Converter.prototype.toJSON = function (space) {
-  return JSON.stringify(this.sourcemap, null, space);
-};
-
-if (typeof Buffer !== 'undefined') {
-  if (typeof Buffer.from === 'function') {
-    Converter.prototype.toBase64 = encodeBase64WithBufferFrom;
-  } else {
-    Converter.prototype.toBase64 = encodeBase64WithNewBuffer;
-  }
-} else {
-  Converter.prototype.toBase64 = encodeBase64WithBtoa;
-}
-
-function encodeBase64WithBufferFrom() {
-  var json = this.toJSON();
-  return Buffer.from(json, 'utf8').toString('base64');
-}
-
-function encodeBase64WithNewBuffer() {
-  var json = this.toJSON();
-  if (typeof json === 'number') {
-    throw new TypeError('The json to encode must not be of type number.');
-  }
-  return new Buffer(json, 'utf8').toString('base64');
-}
-
-function encodeBase64WithBtoa() {
-  var json = this.toJSON();
-  return btoa(unescape(encodeURIComponent(json)));
-}
-
-Converter.prototype.toURI = function () {
-  var json = this.toJSON();
-  return encodeURIComponent(json);
-};
-
-Converter.prototype.toComment = function (options) {
-  var encoding, content, data;
-  if (options != null && options.encoding === 'uri') {
-    encoding = '';
-    content = this.toURI();
-  } else {
-    encoding = ';base64';
-    content = this.toBase64();
-  }
-  data = 'sourceMappingURL=data:application/json;charset=utf-8' + encoding + ',' + content;
-  return options != null && options.multiline ? '/*# ' + data + ' */' : '//# ' + data;
-};
-
-// returns copy instead of original
-Converter.prototype.toObject = function () {
-  return JSON.parse(this.toJSON());
-};
-
-Converter.prototype.addProperty = function (key, value) {
-  if (this.sourcemap.hasOwnProperty(key)) throw new Error('property "' + key + '" already exists on the sourcemap, use set property instead');
-  return this.setProperty(key, value);
-};
-
-Converter.prototype.setProperty = function (key, value) {
-  this.sourcemap[key] = value;
-  return this;
-};
-
-Converter.prototype.getProperty = function (key) {
-  return this.sourcemap[key];
-};
-
-exports.fromObject = function (obj) {
-  return new Converter(obj);
-};
-
-exports.fromJSON = function (json) {
-  return new Converter(json, { isJSON: true });
-};
-
-exports.fromURI = function (uri) {
-  return new Converter(uri, { encoding: 'uri' });
-};
-
-exports.fromBase64 = function (base64) {
-  return new Converter(base64, { encoding: 'base64' });
-};
-
-exports.fromComment = function (comment) {
-  var m, encoding;
-  comment = comment
-    .replace(/^\/\*/g, '//')
-    .replace(/\*\/$/g, '');
-  m = exports.commentRegex.exec(comment);
-  encoding = m && m[4] || 'uri';
-  return new Converter(comment, { encoding: encoding, hasComment: true });
-};
-
-function makeConverter(sm) {
-  return new Converter(sm, { isJSON: true });
-}
-
-exports.fromMapFileComment = function (comment, read) {
-  if (typeof read === 'string') {
-    throw new Error(
-      'String directory paths are no longer supported with `fromMapFileComment`\n' +
-      'Please review the Upgrading documentation at https://github.com/thlorenz/convert-source-map#upgrading'
-    )
-  }
-
-  var sm = readFromFileMap(comment, read);
-  if (sm != null && typeof sm.then === 'function') {
-    return sm.then(makeConverter);
-  } else {
-    return makeConverter(sm);
-  }
-};
-
-// Finds last sourcemap comment in file or returns null if none was found
-exports.fromSource = function (content) {
-  var m = content.match(exports.commentRegex);
-  return m ? exports.fromComment(m.pop()) : null;
-};
-
-// Finds last sourcemap comment in file or returns null if none was found
-exports.fromMapFileSource = function (content, read) {
-  if (typeof read === 'string') {
-    throw new Error(
-      'String directory paths are no longer supported with `fromMapFileSource`\n' +
-      'Please review the Upgrading documentation at https://github.com/thlorenz/convert-source-map#upgrading'
-    )
-  }
-  var m = content.match(exports.mapFileCommentRegex);
-  return m ? exports.fromMapFileComment(m.pop(), read) : null;
-};
-
-exports.removeComments = function (src) {
-  return src.replace(exports.commentRegex, '');
-};
-
-exports.removeMapFileComments = function (src) {
-  return src.replace(exports.mapFileCommentRegex, '');
-};
-
-exports.generateMapFileComment = function (file, options) {
-  var data = 'sourceMappingURL=' + file;
-  return options && options.multiline ? '/*# ' + data + ' */' : '//# ' + data;
-};
-
-
-/***/ }),
-/* 3 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 /*
@@ -250,13 +10,13 @@ exports.generateMapFileComment = function (file, options) {
  * Licensed under the New BSD license. See LICENSE.txt or:
  * http://opensource.org/licenses/BSD-3-Clause
  */
-exports.SourceMapGenerator = __webpack_require__(4).SourceMapGenerator;
-exports.SourceMapConsumer = __webpack_require__(10).SourceMapConsumer;
-exports.SourceNode = __webpack_require__(16).SourceNode;
+exports.SourceMapGenerator = __webpack_require__(3).SourceMapGenerator;
+exports.SourceMapConsumer = __webpack_require__(9).SourceMapConsumer;
+exports.SourceNode = __webpack_require__(15).SourceNode;
 
 
 /***/ }),
-/* 4 */
+/* 3 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -266,10 +26,10 @@ exports.SourceNode = __webpack_require__(16).SourceNode;
  * http://opensource.org/licenses/BSD-3-Clause
  */
 
-const base64VLQ = __webpack_require__(5);
-const util = __webpack_require__(7);
-const ArraySet = (__webpack_require__(8).ArraySet);
-const MappingList = (__webpack_require__(9).MappingList);
+const base64VLQ = __webpack_require__(4);
+const util = __webpack_require__(6);
+const ArraySet = (__webpack_require__(7).ArraySet);
+const MappingList = (__webpack_require__(8).MappingList);
 
 /**
  * An instance of the SourceMapGenerator represents a source map which is
@@ -675,7 +435,7 @@ exports.SourceMapGenerator = SourceMapGenerator;
 
 
 /***/ }),
-/* 5 */
+/* 4 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -715,7 +475,7 @@ exports.SourceMapGenerator = SourceMapGenerator;
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-const base64 = __webpack_require__(6);
+const base64 = __webpack_require__(5);
 
 // A single base 64 digit can contain 6 bits of data. For the base 64 variable
 // length quantities we use in the source map spec, the first bit is the sign,
@@ -792,7 +552,7 @@ exports.encode = function base64VLQ_encode(aValue) {
 
 
 /***/ }),
-/* 6 */
+/* 5 */
 /***/ ((__unused_webpack_module, exports) => {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -816,7 +576,7 @@ exports.encode = function(number) {
 
 
 /***/ }),
-/* 7 */
+/* 6 */
 /***/ ((__unused_webpack_module, exports) => {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -1368,7 +1128,7 @@ exports.computeSourceURL = computeSourceURL;
 
 
 /***/ }),
-/* 8 */
+/* 7 */
 /***/ ((__unused_webpack_module, exports) => {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -1474,7 +1234,7 @@ exports.ArraySet = ArraySet;
 
 
 /***/ }),
-/* 9 */
+/* 8 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -1484,7 +1244,7 @@ exports.ArraySet = ArraySet;
  * http://opensource.org/licenses/BSD-3-Clause
  */
 
-const util = __webpack_require__(7);
+const util = __webpack_require__(6);
 
 /**
  * Determine whether mappingB is after mappingA with respect to generated
@@ -1560,7 +1320,7 @@ exports.MappingList = MappingList;
 
 
 /***/ }),
-/* 10 */
+/* 9 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -1570,12 +1330,12 @@ exports.MappingList = MappingList;
  * http://opensource.org/licenses/BSD-3-Clause
  */
 
-const util = __webpack_require__(7);
-const binarySearch = __webpack_require__(11);
-const ArraySet = (__webpack_require__(8).ArraySet);
-const base64VLQ = __webpack_require__(5); // eslint-disable-line no-unused-vars
-const readWasm = __webpack_require__(12);
-const wasm = __webpack_require__(15);
+const util = __webpack_require__(6);
+const binarySearch = __webpack_require__(10);
+const ArraySet = (__webpack_require__(7).ArraySet);
+const base64VLQ = __webpack_require__(4); // eslint-disable-line no-unused-vars
+const readWasm = __webpack_require__(11);
+const wasm = __webpack_require__(14);
 
 const INTERNAL = Symbol("smcInternal");
 
@@ -2803,7 +2563,7 @@ function _factoryBSM(aSourceMap, aSourceMapURL) {
 
 
 /***/ }),
-/* 11 */
+/* 10 */
 /***/ ((__unused_webpack_module, exports) => {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -2916,7 +2676,7 @@ exports.search = function search(aNeedle, aHaystack, aCompare, aBias) {
 
 
 /***/ }),
-/* 12 */
+/* 11 */
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 var __dirname = "/";
@@ -2948,8 +2708,8 @@ if (isBrowserEnvironment) {
   module.exports.initialize = input => mappingsWasm = input;
 } else {
   // Node version of reading a wasm file into an array buffer.
-  const fs = __webpack_require__(13);
-  const path = __webpack_require__(14);
+  const fs = __webpack_require__(12);
+  const path = __webpack_require__(13);
 
   module.exports = function readWasm() {
     return new Promise((resolve, reject) => {
@@ -2972,6 +2732,12 @@ if (isBrowserEnvironment) {
 
 
 /***/ }),
+/* 12 */
+/***/ (() => {
+
+/* (ignored) */
+
+/***/ }),
 /* 13 */
 /***/ (() => {
 
@@ -2979,15 +2745,9 @@ if (isBrowserEnvironment) {
 
 /***/ }),
 /* 14 */
-/***/ (() => {
-
-/* (ignored) */
-
-/***/ }),
-/* 15 */
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-const readWasm = __webpack_require__(12);
+const readWasm = __webpack_require__(11);
 
 /**
  * Provide the JIT with a nice shape / hidden class.
@@ -3097,7 +2857,7 @@ module.exports = function wasm() {
 
 
 /***/ }),
-/* 16 */
+/* 15 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -3107,8 +2867,8 @@ module.exports = function wasm() {
  * http://opensource.org/licenses/BSD-3-Clause
  */
 
-const SourceMapGenerator = (__webpack_require__(4).SourceMapGenerator);
-const util = __webpack_require__(7);
+const SourceMapGenerator = (__webpack_require__(3).SourceMapGenerator);
+const util = __webpack_require__(6);
 
 // Matches a Windows-style `\r\n` newline or a `\n` newline used by all other
 // operating systems these days (capturing the result).
@@ -3507,14 +3267,460 @@ exports.SourceNode = SourceNode;
 
 
 /***/ }),
-/* 17 */
+/* 16 */
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 "use strict";
 module.exports = __webpack_require__.p + "f6631ab7f89ba86d1e35.wasm";
 
 /***/ }),
+/* 17 */
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   getSourceMapInfo: () => (/* binding */ getSourceMapInfo)
+/* harmony export */ });
+/* harmony import */ var convert_source_map__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(18);
+/* harmony import */ var lodash__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(22);
+/* harmony import */ var lodash__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(lodash__WEBPACK_IMPORTED_MODULE_1__);
+/* harmony import */ var source_map__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(2);
+/* harmony import */ var source_map_lib_mappings_wasm__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(16);
+/* harmony import */ var _helpers_js__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(19);
+/* harmony import */ var _html_js__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(20);
+
+
+
+
+
+
+
+const UNMAPPED_KEY = '[unmapped]';
+const SOURCE_MAP_COMMENT_KEY = '[sourceMappingURL]';
+const NO_SOURCE_KEY = '[no source]';
+const EOL_KEY = '[EOLs]';
+
+source_map__WEBPACK_IMPORTED_MODULE_2__.SourceMapConsumer.initialize({
+  "lib/mappings.wasm": source_map_lib_mappings_wasm__WEBPACK_IMPORTED_MODULE_3__,
+});
+
+async function getSourceMapInfo() {
+  try {
+    const jsSources = await browser.devtools.inspectedWindow.eval(`Array.from(document.querySelectorAll('script')).map(s => s.src).filter(s => s.length)`).then(handleError);
+    const cssSources = await browser.devtools.inspectedWindow.eval(`Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.href).filter(s => s.length)`).then(handleError);
+
+    const contents = await getSourceMapsData([...jsSources, ...cssSources]);
+
+    return (0,_html_js__WEBPACK_IMPORTED_MODULE_5__.generateForHtml)(contents.filter(Boolean));
+  } catch (error) {
+    if (error.isError) {
+      console.log(`Devtools error: ${error.code}`);
+    } else {
+      console.error(error);
+    }
+  }
+}
+
+function getText(url) {
+  return fetch(url).then(r => r.text());
+}
+
+
+async function getSourceMapsData(result) {
+  return await Promise.all(result.map(async (srcPath) => {
+    const srcContent = await getText(srcPath);
+
+    const converter = await convert_source_map__WEBPACK_IMPORTED_MODULE_0__.fromMapFileSource(srcContent, (filename) => getText(new URL(filename, srcPath)));
+
+    if (!converter) return null;
+
+    const consumer = await new source_map__WEBPACK_IMPORTED_MODULE_2__.SourceMapConsumer(converter.toJSON());
+
+    const sizes = computeFileSizes(consumer, srcContent);
+
+    const files = adjustSourcePaths(sizes.files);
+
+    // Free Wasm data
+    consumer.destroy();
+
+    return {
+      bundleName: srcPath,
+      files,
+      ...sizes
+    };
+  }));
+}
+function handleError([result, error]) {
+  if (error) throw error;
+  return result;
+}
+const COMMENT_REGEX = convert_source_map__WEBPACK_IMPORTED_MODULE_0__.commentRegex;
+const MAP_FILE_COMMENT_REGEX = convert_source_map__WEBPACK_IMPORTED_MODULE_0__.mapFileCommentRegex;
+/**
+ * Extract either source map comment/file
+ */
+function getSourceMapComment(fileContent) {
+  const sourceMapComment = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_4__.getFirstRegexMatch)(COMMENT_REGEX, fileContent) ||
+    (0,_helpers_js__WEBPACK_IMPORTED_MODULE_4__.getFirstRegexMatch)(MAP_FILE_COMMENT_REGEX, fileContent) ||
+    '';
+
+  // Remove trailing EOLs
+  return sourceMapComment.trim();
+}
+function computeFileSizes(consumer, fileContent) {
+
+  const sourceMapComment = getSourceMapComment(fileContent);
+  // Remove inline source map comment, source map file comment and trailing EOLs
+  const srcContent = fileContent.replace(sourceMapComment, '').trim();
+
+  const eol = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_4__.detectEOL)(fileContent);
+  // Assume only one type of EOL is used
+  const lines = srcContent.split(eol);
+
+  const mappingRanges = [];
+
+  const context = {
+    generatedLine: -1,
+    generatedColumn: -1,
+    line: '',
+    source: null,
+    consumer,
+    mapReferenceEOLSources: new Set(),
+  };
+
+  consumer.computeColumnSpans();
+  consumer.eachMapping(({ source, generatedLine, generatedColumn, lastGeneratedColumn }) => {
+    // Columns are 0-based, Lines are 1-based
+    const lineIndex = generatedLine - 1;
+    const line = lines[lineIndex];
+
+    if (line === undefined) {
+      throw new AppError({
+        code: 'InvalidMappingLine',
+        generatedLine,
+        maxLine: lines.length,
+      });
+    }
+
+    context.generatedLine = generatedLine;
+    context.generatedColumn = lastGeneratedColumn || generatedColumn;
+    context.line = line;
+    context.source = source;
+
+    const start = generatedColumn;
+    const end = lastGeneratedColumn === null ? line.length - 1 : lastGeneratedColumn;
+
+    const lineRanges = mappingRanges[lineIndex] || [];
+
+    lineRanges.push({
+      start,
+      end,
+      source: source === null ? NO_SOURCE_KEY : source,
+    });
+
+    mappingRanges[lineIndex] = lineRanges;
+  });
+
+  let files = {};
+  let mappedBytes = 0;
+
+  mappingRanges.forEach((lineRanges, lineIndex) => {
+    const line = lines[lineIndex];
+    const mergedRanges = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_4__.mergeRanges)(lineRanges);
+
+    mergedRanges.forEach(({ start, end, source }) => {
+      const rangeString = line.substring(start, end + 1);
+      const rangeByteLength = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_4__.getSize)(rangeString);
+
+      if (!files[source]) {
+        files[source] = { size: 0 };
+      }
+
+      files[source].size += rangeByteLength;
+
+      mappedBytes += rangeByteLength;
+    });
+  });
+
+  const sourceMapCommentBytes = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_4__.getSize)(sourceMapComment);
+  const eolBytes = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_4__.getOccurrencesCount)(eol, fileContent) * (0,_helpers_js__WEBPACK_IMPORTED_MODULE_4__.getSize)(eol);
+  const totalBytes = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_4__.getSize)(fileContent);
+  let unmappedBytes;
+
+  files[SOURCE_MAP_COMMENT_KEY] = { size: sourceMapCommentBytes };
+
+  unmappedBytes = totalBytes - mappedBytes - sourceMapCommentBytes - eolBytes;
+  files[UNMAPPED_KEY] = { size: unmappedBytes };
+
+  if (eolBytes > 0) {
+    files[EOL_KEY] = { size: eolBytes };
+  }
+
+  return {
+    totalBytes,
+    mappedBytes,
+    unmappedBytes,
+    eolBytes,
+    sourceMapCommentBytes,
+    files,
+  };
+}
+function adjustSourcePaths(fileSizeMap) {
+  const prefix = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_4__.getCommonPathPrefix)(Object.keys(fileSizeMap));
+  const length = prefix.length;
+
+  if (length) {
+    fileSizeMap = (0,lodash__WEBPACK_IMPORTED_MODULE_1__.mapKeys)(fileSizeMap, (size, source) => source.slice(length));
+  }
+
+
+  return fileSizeMap;
+}
+
+
+/***/ }),
 /* 18 */
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+
+Object.defineProperty(exports, "commentRegex", ({
+  get: function getCommentRegex () {
+    // Groups: 1: media type, 2: MIME type, 3: charset, 4: encoding, 5: data.
+    return /^\s*?\/[\/\*][@#]\s+?sourceMappingURL=data:(((?:application|text)\/json)(?:;charset=([^;,]+?)?)?)?(?:;(base64))?,(.*?)$/mg;
+  }
+}));
+
+
+Object.defineProperty(exports, "mapFileCommentRegex", ({
+  get: function getMapFileCommentRegex () {
+    // Matches sourceMappingURL in either // or /* comment styles.
+    return /(?:\/\/[@#][ \t]+?sourceMappingURL=([^\s'"`]+?)[ \t]*?$)|(?:\/\*[@#][ \t]+sourceMappingURL=([^*]+?)[ \t]*?(?:\*\/){1}[ \t]*?$)/mg;
+  }
+}));
+
+var decodeBase64;
+if (typeof Buffer !== 'undefined') {
+  if (typeof Buffer.from === 'function') {
+    decodeBase64 = decodeBase64WithBufferFrom;
+  } else {
+    decodeBase64 = decodeBase64WithNewBuffer;
+  }
+} else {
+  decodeBase64 = decodeBase64WithAtob;
+}
+
+function decodeBase64WithBufferFrom(base64) {
+  return Buffer.from(base64, 'base64').toString();
+}
+
+function decodeBase64WithNewBuffer(base64) {
+  if (typeof value === 'number') {
+    throw new TypeError('The value to decode must not be of type number.');
+  }
+  return new Buffer(base64, 'base64').toString();
+}
+
+function decodeBase64WithAtob(base64) {
+  return decodeURIComponent(escape(atob(base64)));
+}
+
+function stripComment(sm) {
+  return sm.split(',').pop();
+}
+
+function readFromFileMap(sm, read) {
+  var r = exports.mapFileCommentRegex.exec(sm);
+  // for some odd reason //# .. captures in 1 and /* .. */ in 2
+  var filename = r[1] || r[2];
+
+  try {
+    var sm = read(filename);
+    if (sm != null && typeof sm.catch === 'function') {
+      return sm.catch(throwError);
+    } else {
+      return sm;
+    }
+  } catch (e) {
+    throwError(e);
+  }
+
+  function throwError(e) {
+    throw new Error('An error occurred while trying to read the map file at ' + filename + '\n' + e.stack);
+  }
+}
+
+function Converter (sm, opts) {
+  opts = opts || {};
+
+  if (opts.hasComment) {
+    sm = stripComment(sm);
+  }
+
+  if (opts.encoding === 'base64') {
+    sm = decodeBase64(sm);
+  } else if (opts.encoding === 'uri') {
+    sm = decodeURIComponent(sm);
+  }
+
+  if (opts.isJSON || opts.encoding) {
+    sm = JSON.parse(sm);
+  }
+
+  this.sourcemap = sm;
+}
+
+Converter.prototype.toJSON = function (space) {
+  return JSON.stringify(this.sourcemap, null, space);
+};
+
+if (typeof Buffer !== 'undefined') {
+  if (typeof Buffer.from === 'function') {
+    Converter.prototype.toBase64 = encodeBase64WithBufferFrom;
+  } else {
+    Converter.prototype.toBase64 = encodeBase64WithNewBuffer;
+  }
+} else {
+  Converter.prototype.toBase64 = encodeBase64WithBtoa;
+}
+
+function encodeBase64WithBufferFrom() {
+  var json = this.toJSON();
+  return Buffer.from(json, 'utf8').toString('base64');
+}
+
+function encodeBase64WithNewBuffer() {
+  var json = this.toJSON();
+  if (typeof json === 'number') {
+    throw new TypeError('The json to encode must not be of type number.');
+  }
+  return new Buffer(json, 'utf8').toString('base64');
+}
+
+function encodeBase64WithBtoa() {
+  var json = this.toJSON();
+  return btoa(unescape(encodeURIComponent(json)));
+}
+
+Converter.prototype.toURI = function () {
+  var json = this.toJSON();
+  return encodeURIComponent(json);
+};
+
+Converter.prototype.toComment = function (options) {
+  var encoding, content, data;
+  if (options != null && options.encoding === 'uri') {
+    encoding = '';
+    content = this.toURI();
+  } else {
+    encoding = ';base64';
+    content = this.toBase64();
+  }
+  data = 'sourceMappingURL=data:application/json;charset=utf-8' + encoding + ',' + content;
+  return options != null && options.multiline ? '/*# ' + data + ' */' : '//# ' + data;
+};
+
+// returns copy instead of original
+Converter.prototype.toObject = function () {
+  return JSON.parse(this.toJSON());
+};
+
+Converter.prototype.addProperty = function (key, value) {
+  if (this.sourcemap.hasOwnProperty(key)) throw new Error('property "' + key + '" already exists on the sourcemap, use set property instead');
+  return this.setProperty(key, value);
+};
+
+Converter.prototype.setProperty = function (key, value) {
+  this.sourcemap[key] = value;
+  return this;
+};
+
+Converter.prototype.getProperty = function (key) {
+  return this.sourcemap[key];
+};
+
+exports.fromObject = function (obj) {
+  return new Converter(obj);
+};
+
+exports.fromJSON = function (json) {
+  return new Converter(json, { isJSON: true });
+};
+
+exports.fromURI = function (uri) {
+  return new Converter(uri, { encoding: 'uri' });
+};
+
+exports.fromBase64 = function (base64) {
+  return new Converter(base64, { encoding: 'base64' });
+};
+
+exports.fromComment = function (comment) {
+  var m, encoding;
+  comment = comment
+    .replace(/^\/\*/g, '//')
+    .replace(/\*\/$/g, '');
+  m = exports.commentRegex.exec(comment);
+  encoding = m && m[4] || 'uri';
+  return new Converter(comment, { encoding: encoding, hasComment: true });
+};
+
+function makeConverter(sm) {
+  return new Converter(sm, { isJSON: true });
+}
+
+exports.fromMapFileComment = function (comment, read) {
+  if (typeof read === 'string') {
+    throw new Error(
+      'String directory paths are no longer supported with `fromMapFileComment`\n' +
+      'Please review the Upgrading documentation at https://github.com/thlorenz/convert-source-map#upgrading'
+    )
+  }
+
+  var sm = readFromFileMap(comment, read);
+  if (sm != null && typeof sm.then === 'function') {
+    return sm.then(makeConverter);
+  } else {
+    return makeConverter(sm);
+  }
+};
+
+// Finds last sourcemap comment in file or returns null if none was found
+exports.fromSource = function (content) {
+  var m = content.match(exports.commentRegex);
+  return m ? exports.fromComment(m.pop()) : null;
+};
+
+// Finds last sourcemap comment in file or returns null if none was found
+exports.fromMapFileSource = function (content, read) {
+  if (typeof read === 'string') {
+    throw new Error(
+      'String directory paths are no longer supported with `fromMapFileSource`\n' +
+      'Please review the Upgrading documentation at https://github.com/thlorenz/convert-source-map#upgrading'
+    )
+  }
+  var m = content.match(exports.mapFileCommentRegex);
+  return m ? exports.fromMapFileComment(m.pop(), read) : null;
+};
+
+exports.removeComments = function (src) {
+  return src.replace(exports.commentRegex, '');
+};
+
+exports.removeMapFileComments = function (src) {
+  return src.replace(exports.mapFileCommentRegex, '');
+};
+
+exports.generateMapFileComment = function (file, options) {
+  var data = 'sourceMappingURL=' + file;
+  return options && options.multiline ? '/*# ' + data + ' */' : '//# ' + data;
+};
+
+
+/***/ }),
+/* 19 */
 /***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
 
 "use strict";
@@ -3661,7 +3867,7 @@ function getSize(str) {
 }
 
 /***/ }),
-/* 19 */
+/* 20 */
 /***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
 
 "use strict";
@@ -3671,11 +3877,11 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   getWebTreeMapData: () => (/* binding */ getWebTreeMapData),
 /* harmony export */   makeMergedTreeDataMap: () => (/* binding */ makeMergedTreeDataMap)
 /* harmony export */ });
-/* harmony import */ var escape_html__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(20);
+/* harmony import */ var escape_html__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(21);
 /* harmony import */ var escape_html__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(escape_html__WEBPACK_IMPORTED_MODULE_0__);
-/* harmony import */ var lodash__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(21);
+/* harmony import */ var lodash__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(22);
 /* harmony import */ var lodash__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(lodash__WEBPACK_IMPORTED_MODULE_1__);
-/* harmony import */ var _helpers__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(18);
+/* harmony import */ var _helpers__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(19);
 
 
 
@@ -3904,7 +4110,7 @@ function addSizeToTitle(node, total) {
 
 
 /***/ }),
-/* 20 */
+/* 21 */
 /***/ ((module) => {
 
 "use strict";
@@ -3989,7 +4195,7 @@ function escapeHtml(string) {
 
 
 /***/ }),
-/* 21 */
+/* 22 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* module decorator */ module = __webpack_require__.nmd(module);
@@ -21196,6 +21402,24 @@ var __WEBPACK_AMD_DEFINE_RESULT__;/**
 }.call(this));
 
 
+/***/ }),
+/* 23 */,
+/* 24 */
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   handleEvent: () => (/* binding */ handleEvent)
+/* harmony export */ });
+function handleEvent(obj, map = (x => x)) {
+  return (data) => {
+    const { event, ...args } = map(data);
+    obj[event]?.(args);
+  }
+}
+
+
 /***/ })
 /******/ 	]);
 /************************************************************************/
@@ -21317,32 +21541,13 @@ var __webpack_exports__ = {};
 (() => {
 "use strict";
 __webpack_require__.r(__webpack_exports__);
-/* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   EOL_KEY: () => (/* binding */ EOL_KEY),
-/* harmony export */   NO_SOURCE_KEY: () => (/* binding */ NO_SOURCE_KEY),
-/* harmony export */   SOURCE_MAP_COMMENT_KEY: () => (/* binding */ SOURCE_MAP_COMMENT_KEY),
-/* harmony export */   UNMAPPED_KEY: () => (/* binding */ UNMAPPED_KEY)
-/* harmony export */ });
-/* harmony import */ var convert_source_map__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(2);
-/* harmony import */ var source_map__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(3);
-/* harmony import */ var source_map_lib_mappings_wasm__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(17);
-/* harmony import */ var _helpers_js__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(18);
-/* harmony import */ var _html_js__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(19);
+/* harmony import */ var _helpers_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(24);
+/* harmony import */ var _sourcemaps_getSourceMapInfo_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(17);
 
 
-
-
-
-
-source_map__WEBPACK_IMPORTED_MODULE_1__.SourceMapConsumer.initialize({
-  "lib/mappings.wasm": source_map_lib_mappings_wasm__WEBPACK_IMPORTED_MODULE_2__,
-});
-const UNMAPPED_KEY = '[unmapped]';
-const SOURCE_MAP_COMMENT_KEY = '[sourceMappingURL]';
-const NO_SOURCE_KEY = '[no source]';
-const EOL_KEY = '[EOLs]';
 
 const tabId = browser.devtools.inspectedWindow.tabId;
+
 /**
 Create a panel, and add listeners for panel show/hide events.
 */
@@ -21352,228 +21557,46 @@ browser.devtools.panels.create(
   "/devtools/panel/panel.html"
 ).then((newPanel) => {
   let currentPanel;
-  console.log('create panel');
   const port = browser.runtime.connect({ name: 'source-maps-devtools' });
-  port.postMessage({ tabId });
 
-  port.onMessage.addListener(({ event, status }) => {
-    console.log('received', event, status);
-    if (status === 'complete') reloadData(currentPanel);
-    if (status === 'loading') currentPanel?.postMessage({
-      type: 'sourcemaps',
-      loading: true
-    });
-  })
+  port.onMessage.addListener((0,_helpers_js__WEBPACK_IMPORTED_MODULE_0__.handleEvent)({
+    complete() {
+      reloadData(currentPanel);
+    },
+    loading() {
+      showLoading(currentPanel);
+    }
+  }));
 
   newPanel.onShown.addListener(async (panel) => {
-    console.log('panel is being shown', tabId, panel);
     currentPanel = panel;
-    await reloadData(panel);
+    port.postMessage({ event: 'onShown', tabId });
   });
 
   newPanel.onHidden.addListener(() => {
-    console.log('panel is being hidden');
     currentPanel = undefined;
+    port.postMessage({ event: 'onHidden' });
   });
 });
 
 async function reloadData(panel) {
-  if (!panel) return;
-  panel.postMessage({
-    type: 'sourcemaps',
-    loading: true
-  });
+  showLoading(panel);
+  const result = await (0,_sourcemaps_getSourceMapInfo_js__WEBPACK_IMPORTED_MODULE_1__.getSourceMapInfo)();
+  showSourcemaps(panel, result);
+}
 
-  const result = await getSourceMapInfo();
-
-  panel.postMessage({
-    type: 'sourcemaps',
+function showSourcemaps(panel, result) {
+  panel?.postMessage({
+    event: 'complete',
     ...result
   });
 }
 
-
-async function getSourceMapInfo() {
-  try {
-    const getScriptSources = "Array.from(document.querySelectorAll('script')).map(s => s.src).filter(s => s.length)";
-    const result = await browser.devtools.inspectedWindow.eval(getScriptSources).then(handleError);
-
-    const contents = await getSourceMapsData(result);
-
-    return (0,_html_js__WEBPACK_IMPORTED_MODULE_4__.generateForHtml)(contents.filter(Boolean));
-  } catch (error) {
-    if (error.isError) {
-      console.log(`Devtools error: ${error.code}`);
-    } else {
-      console.error(error);
-    }
-  }
-}
-
-function getText(url) {
-  return fetch(url).then(r => r.text());
-}
-
-
-async function getSourceMapsData(result) {
-  return await Promise.all(result.map(async (srcPath) => {
-    const srcContent = await getText(srcPath);
-
-    const converter = await convert_source_map__WEBPACK_IMPORTED_MODULE_0__.fromMapFileSource(srcContent, (filename) => getText(new URL(filename, srcPath)));
-
-    if (!converter) return null;
-
-    const consumer = await new source_map__WEBPACK_IMPORTED_MODULE_1__.SourceMapConsumer(converter.toJSON());
-
-    const sizes = computeFileSizes(consumer, srcContent);
-
-    const files = adjustSourcePaths(sizes.files);
-
-    // Free Wasm data
-    consumer.destroy();
-
-    return {
-      bundleName: srcPath,
-      files,
-      ...sizes
-    };
-  }));
-}
-
-function handleError([result, error]) {
-  if (error) throw error;
-  return result;
-}
-
-
-const COMMENT_REGEX = convert_source_map__WEBPACK_IMPORTED_MODULE_0__.commentRegex;
-const MAP_FILE_COMMENT_REGEX = convert_source_map__WEBPACK_IMPORTED_MODULE_0__.mapFileCommentRegex;
-
-/**
- * Extract either source map comment/file
- */
-function getSourceMapComment(fileContent) {
-  const sourceMapComment =
-    (0,_helpers_js__WEBPACK_IMPORTED_MODULE_3__.getFirstRegexMatch)(COMMENT_REGEX, fileContent) ||
-    (0,_helpers_js__WEBPACK_IMPORTED_MODULE_3__.getFirstRegexMatch)(MAP_FILE_COMMENT_REGEX, fileContent) ||
-    '';
-
-  // Remove trailing EOLs
-  return sourceMapComment.trim();
-}
-
-function computeFileSizes(consumer, fileContent) {
-
-  const sourceMapComment = getSourceMapComment(fileContent);
-  // Remove inline source map comment, source map file comment and trailing EOLs
-  const srcContent = fileContent.replace(sourceMapComment, '').trim();
-
-  const eol = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_3__.detectEOL)(fileContent);
-  // Assume only one type of EOL is used
-  const lines = srcContent.split(eol);
-
-  const mappingRanges = [];
-
-  const context = {
-    generatedLine: -1,
-    generatedColumn: -1,
-    line: '',
-    source: null,
-    consumer,
-    mapReferenceEOLSources: new Set(),
-  };
-
-  consumer.computeColumnSpans();
-  consumer.eachMapping(({ source, generatedLine, generatedColumn, lastGeneratedColumn }) => {
-    // Columns are 0-based, Lines are 1-based
-
-    const lineIndex = generatedLine - 1;
-    const line = lines[lineIndex];
-
-    if (line === undefined) {
-      throw new AppError({
-        code: 'InvalidMappingLine',
-        generatedLine,
-        maxLine: lines.length,
-      });
-    }
-
-    context.generatedLine = generatedLine;
-    context.generatedColumn = lastGeneratedColumn || generatedColumn;
-    context.line = line;
-    context.source = source;
-
-    const start = generatedColumn;
-    const end = lastGeneratedColumn === null ? line.length - 1 : lastGeneratedColumn;
-
-    const lineRanges = mappingRanges[lineIndex] || [];
-
-    lineRanges.push({
-      start,
-      end,
-      source: source === null ? NO_SOURCE_KEY : source,
-    });
-
-    mappingRanges[lineIndex] = lineRanges;
+function showLoading(panel) {
+  panel?.postMessage({
+    event: 'loading'
   });
-
-  let files = {};
-  let mappedBytes = 0;
-
-  mappingRanges.forEach((lineRanges, lineIndex) => {
-    const line = lines[lineIndex];
-    const mergedRanges = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_3__.mergeRanges)(lineRanges);
-
-    mergedRanges.forEach(({ start, end, source }) => {
-      const rangeString = line.substring(start, end + 1);
-      const rangeByteLength = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_3__.getSize)(rangeString);
-
-      if (!files[source]) {
-        files[source] = { size: 0 };
-      }
-
-      files[source].size += rangeByteLength;
-
-      mappedBytes += rangeByteLength;
-    });
-  });
-
-  const sourceMapCommentBytes = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_3__.getSize)(sourceMapComment);
-  const eolBytes = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_3__.getOccurrencesCount)(eol, srcContent) * (0,_helpers_js__WEBPACK_IMPORTED_MODULE_3__.getSize)(eol);
-  const totalBytes = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_3__.getSize)(srcContent);
-  let unmappedBytes;
-
-  files[SOURCE_MAP_COMMENT_KEY] = { size: sourceMapCommentBytes };
-
-  unmappedBytes = totalBytes - mappedBytes - sourceMapCommentBytes - eolBytes;
-  files[UNMAPPED_KEY] = { size: unmappedBytes };
-
-  if (eolBytes > 0) {
-    files[EOL_KEY] = { size: eolBytes };
-  }
-
-  return {
-    totalBytes,
-    mappedBytes,
-    unmappedBytes,
-    eolBytes,
-    sourceMapCommentBytes,
-    files,
-  };
 }
-
-function adjustSourcePaths(fileSizeMap) {
-  const prefix = (0,_helpers_js__WEBPACK_IMPORTED_MODULE_3__.getCommonPathPrefix)(Object.keys(fileSizeMap));
-  const length = prefix.length;
-
-  if (length) {
-    fileSizeMap = mapKeys(fileSizeMap, (size, source) => source.slice(length));
-  }
-
-
-  return fileSizeMap;
-}
-
 })();
 
 /******/ })()

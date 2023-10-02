@@ -1,45 +1,53 @@
-window.addEventListener('message', (event) => {
-  if (event.data.type !== 'sourcemaps') return;
-
-  const { treeDataMap, bundles, loading } = event.data;
-
-  document.getElementById('content').dataset.loading = loading;
-
-  if (loading) return;
+import { handleEvent } from "./helpers";
+window.addEventListener('load', () => {
+  const contentElm = document.getElementById('content');
+  const mapElm = document.getElementById('map');
+  const headerElm = document.getElementById('header');
+  const bundleSelectElm = document.getElementById('bundle-select');
 
   let selectedBundleId = '0';
+  let selectBundle = () => { };
 
-  function selectBundle(bundleId) {
-    const bundle = treeDataMap[bundleId];
-    appendTreemap(map, bundle.data);
-    document.title = `${bundle.name} - Source Map Explorer`;
-  }
-
-  const map = document.getElementById('map');
-  const header = document.getElementById('header');
-  header.style.display = bundles.length > 1 ? 'block' : 'none';
-
-  const bundleSelect = document.getElementById('bundle-select');
-  while (bundleSelect.hasChildNodes()) {
-    bundleSelect.removeChild(bundleSelect.firstChild);
-  }
-
-  if (bundles.length > 1) {
-    bundles.forEach(({ name, size }, index) => {
-      const option = document.createElement('option');
-      option.value = index;
-      option.text = `${name} (${size})`;
-      bundleSelect.appendChild(option);
-    });
-    bundleSelect.addEventListener('change', function (event) {
-      selectedBundleId = bundleSelect.value;
-      selectBundle(selectedBundleId);
-    })
-  }
-
-  window.addEventListener('resize', function () {
-    selectBundle(selectedBundleId);
+  window.addEventListener('resize', () => {
+    selectBundle();
   });
 
-  selectBundle(selectedBundleId);
-})
+  bundleSelectElm.addEventListener('change', () => {
+    selectBundle(bundleSelectElm.value);
+  });
+
+  window.addEventListener('message', handleEvent({
+    loading() {
+      contentElm.dataset.loading = true;
+    },
+    complete({ treeDataMap, bundles }) {
+      delete contentElm.dataset.loading;
+
+      selectBundle = (bundleId = selectedBundleId) => {
+        selectedBundleId = bundleId;
+        appendTreemap(mapElm, treeDataMap[selectedBundleId].data);
+      }
+
+      headerElm.style.display = bundles.length > 1 ? 'block' : 'none';
+
+      while (bundleSelectElm.hasChildNodes()) {
+        bundleSelectElm.removeChild(bundleSelectElm.firstChild);
+      }
+
+      while (mapElm.hasChildNodes()) {
+        mapElm.removeChild(mapElm.firstChild);
+      }
+
+      if (bundles.length > 1) {
+        bundles.forEach(({ name, size }, index) => {
+          const option = document.createElement('option');
+          option.value = index;
+          option.text = `${name} (${size})`;
+          bundleSelectElm.appendChild(option);
+        });
+      }
+
+      selectBundle(0);
+    }
+  }, event => event.data));
+});
